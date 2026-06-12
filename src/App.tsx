@@ -584,7 +584,8 @@ export default function App() {
     const mime = item.type.toLowerCase();
 
     if (['doc', 'docx'].includes(fileExt) || mime.includes('document') || mime.includes('msword')) {
-      setSimulatedWordItem(item);
+      handleDownload(item);
+      setAlertMessage(`📥 กำลังจัดเตรียมสตรีมดาวน์โหลดไฟล์ "${item.name}" เพื่อเรียกเปิดทำงานโดยโปรแกรม Microsoft Word บนเครื่องคอมพิวเตอร์ของคุณโดยรอบด้าน...`);
     } else if (['xls', 'xlsx', 'csv'].includes(fileExt) || mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) {
       setSimulatedExcelItem(item);
     } else {
@@ -751,8 +752,9 @@ export default function App() {
             setOpenChoiceItem(null);
           }}
           onSelectWord={(item) => {
-            setSimulatedWordItem(item);
+            handleDownload(item);
             setOpenChoiceItem(null);
+            setAlertMessage(`📥 กำลังจัดเตรียมสตรีมดาวน์โหลดไฟล์ "${item.name}" เพื่อเรียกเปิดทำงานโดยโปรแกรม Microsoft Word บนเครื่องคอมพิวเตอร์ของคุณโดยรอบด้าน...`);
           }}
           onSelectExcel={(item) => {
             setSimulatedExcelItem(item);
