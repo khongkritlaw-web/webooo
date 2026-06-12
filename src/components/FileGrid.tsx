@@ -21,7 +21,8 @@ import {
   ArrowDown,
   Eye,
   Plus,
-  Laptop
+  Laptop,
+  Cloud
 } from 'lucide-react';
 import { DBItem, FileCategory } from '../types';
 
@@ -40,6 +41,10 @@ interface FileGridProps {
   isSidebarCollapsed: boolean;
   onToggleSidebar: () => void;
   onOpenChoice?: (item: DBItem) => void;
+  breadcrumbsOverride?: { id: string | null; name: string }[];
+  onExportToGoogle?: (item: DBItem) => void;
+  onImportFromGoogle?: (item: DBItem) => void;
+  isGoogleConnected?: boolean;
 }
 
 type ViewMode = 'grid' | 'list';
@@ -61,6 +66,10 @@ export default function FileGrid({
   isSidebarCollapsed,
   onToggleSidebar,
   onOpenChoice,
+  breadcrumbsOverride,
+  onExportToGoogle,
+  onImportFromGoogle,
+  isGoogleConnected = false,
 }: FileGridProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -134,6 +143,7 @@ export default function FileGrid({
 
   // Construct current directory path breadcrumbs
   const breadcrumbs = useMemo(() => {
+    if (breadcrumbsOverride) return breadcrumbsOverride;
     const list: { id: string | null; name: string }[] = [{ id: null, name: 'โฟลเดอร์หลัก (Home)' }];
     if (!currentFolderId) return list;
 
@@ -151,13 +161,19 @@ export default function FileGrid({
     }
 
     return [...list, ...pathList];
-  }, [items, currentFolderId]);
+  }, [items, currentFolderId, breadcrumbsOverride]);
 
   const currentFolderName = useMemo(() => {
+    if (currentCategory === 'google-drive') {
+      if (breadcrumbsOverride && breadcrumbsOverride.length > 0) {
+        return breadcrumbsOverride[breadcrumbsOverride.length - 1].name;
+      }
+      return 'Google Drive (โฟลเดอร์เซฟหลัก)';
+    }
     if (!currentFolderId) return 'โฟลเดอร์หลัก';
     const folder = items.find(item => item.id === currentFolderId);
     return folder ? folder.name : 'โฟลเดอร์หลัก';
-  }, [items, currentFolderId]);
+  }, [items, currentFolderId, currentCategory, breadcrumbsOverride]);
 
   // Read sizes 
   const formatSize = (bytes: number) => {
@@ -469,6 +485,24 @@ export default function FileGrid({
                                 <Eye className="w-3.5 h-3.5 text-indigo-500" />
                                 <span>{item.isFolder ? 'เปิดดูโฟลเดอร์' : 'เปิดดูไฟล์'}</span>
                               </button>
+                              {isGoogleConnected && currentCategory !== 'google-drive' && !item.isFolder && onExportToGoogle && (
+                                <button
+                                  onClick={() => onExportToGoogle(item)}
+                                  className="w-full text-left px-3.5 py-1.5 hover:bg-emerald-50 text-emerald-700 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer border-b border-emerald-100/30"
+                                >
+                                  <Cloud className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  <span>ส่งออกไป Google Drive</span>
+                                </button>
+                              )}
+                              {currentCategory === 'google-drive' && !item.isFolder && onImportFromGoogle && (
+                                <button
+                                  onClick={() => onImportFromGoogle(item)}
+                                  className="w-full text-left px-3.5 py-1.5 hover:bg-indigo-50 text-indigo-700 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer border-b border-indigo-100/30"
+                                >
+                                  <Cloud className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                  <span>นำเข้าสู่ Cloud Drive</span>
+                                </button>
+                              )}
                               {!item.isFolder && onOpenChoice && (
                                 <button
                                   onClick={(e) => {
@@ -631,6 +665,24 @@ export default function FileGrid({
                                   <Eye className="w-3.5 h-3.5 text-indigo-500" />
                                   <span>{item.isFolder ? 'เปิดเข้าดู' : 'เปิดดูพรีวิว'}</span>
                                 </button>
+                                {isGoogleConnected && currentCategory !== 'google-drive' && !item.isFolder && onExportToGoogle && (
+                                  <button
+                                    onClick={() => onExportToGoogle(item)}
+                                    className="w-full text-left px-3.5 py-1.5 hover:bg-emerald-50 text-emerald-700 font-bold flex items-center gap-1.5 cursor-pointer border-b border-emerald-100/30"
+                                  >
+                                    <Cloud className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                    <span>ส่งออกไป Google Drive</span>
+                                  </button>
+                                )}
+                                {currentCategory === 'google-drive' && !item.isFolder && onImportFromGoogle && (
+                                  <button
+                                    onClick={() => onImportFromGoogle(item)}
+                                    className="w-full text-left px-3.5 py-1.5 hover:bg-indigo-50 text-indigo-700 font-bold flex items-center gap-1.5 cursor-pointer border-b border-indigo-100/30"
+                                  >
+                                    <Cloud className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                    <span>นำเข้าสู่ Cloud Drive</span>
+                                  </button>
+                                )}
                                 {!item.isFolder && onOpenChoice && (
                                   <button
                                     onClick={(e) => {

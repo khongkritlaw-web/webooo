@@ -27,6 +27,40 @@ export default function PreviewModal({
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const pdfUrl = React.useMemo(() => {
+    if (!item) return '';
+    const isPdf = item.type.toLowerCase() === 'application/pdf' || item.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf || !item.content) return '';
+    
+    if (item.content.startsWith('data:')) {
+      try {
+        const arr = item.content.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        return URL.createObjectURL(blob);
+      } catch (e) {
+        console.error('Error generating object URL for PDF:', e);
+        return item.content; // fallback
+      }
+    }
+    return item.content;
+  }, [item]);
+
+  // Handle cleaning up object URLs
+  useEffect(() => {
+    return () => {
+      if (pdfUrl && pdfUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(pdfUrl);
+      }
+    };
+  }, [pdfUrl]);
+
   useEffect(() => {
     if (!item) return;
 
@@ -48,6 +82,7 @@ export default function PreviewModal({
   if (!item) return null;
 
   const mime = item.type.toLowerCase();
+  const isPdf = mime === 'application/pdf' || item.name.toLowerCase().endsWith('.pdf');
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -172,6 +207,36 @@ export default function PreviewModal({
                   <span>{isSaving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</span>
                 </button>
               </div>
+            </div>
+          ) : isPdf ? (
+            <div className="w-full h-full flex flex-col gap-3 min-h-[480px]">
+              <div className="flex justify-between items-center bg-emerald-50/65 px-4.5 py-2 rounded-2xl border border-emerald-100/30 select-none">
+                <span className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  เปิดดูตัวอย่างไฟล์ PDF สำเร็จ คุณสามารถอ่าน ดาวน์โหลด หรือปริ้นท์ได้โดยตรง
+                </span>
+                {pdfUrl && (
+                  <button
+                    onClick={() => {
+                      const newTab = window.open();
+                      if (newTab) {
+                        newTab.document.write(`<iframe src="${pdfUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                      } else {
+                        window.open(pdfUrl, '_blank');
+                      }
+                    }}
+                    className="text-[10px] font-bold text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-all shadow-xs shrink-0"
+                  >
+                    <Laptop className="w-3 h-3" />
+                    <span>เปิดเต็มจอแท็บใหม่</span>
+                  </button>
+                )}
+              </div>
+              <iframe
+                src={pdfUrl}
+                className="w-full flex-grow rounded-2xl border border-slate-200 bg-white shadow-inner min-h-[420px]"
+                title={item.name}
+              />
             </div>
           ) : /* 2. Image loader stage */
           mime.startsWith('image/') ? (

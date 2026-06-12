@@ -18,8 +18,7 @@ export const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
 // Request Google Drive scopes
-provider.addScope('https://www.googleapis.com/auth/drive.readonly');
-provider.addScope('https://www.googleapis.com/auth/drive.metadata.readonly');
+provider.addScope('https://www.googleapis.com/auth/drive');
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;

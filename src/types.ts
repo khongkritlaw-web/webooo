@@ -18,7 +18,7 @@ export interface DBItem {
   trashDate?: number;
 }
 
-export type FileCategory = 'all' | 'images' | 'documents' | 'audio-video' | 'archives' | 'trash';
+export type FileCategory = 'all' | 'images' | 'documents' | 'audio-video' | 'archives' | 'trash' | 'google-drive';
 
 export interface StorageStats {
   usedBytes: number;

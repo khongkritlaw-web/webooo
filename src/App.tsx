@@ -23,7 +23,16 @@ import FolderSelectorModal from './components/FolderSelectorModal';
 import OpenChoiceModal from './components/OpenChoiceModal';
 import SimulatedWordModal from './components/SimulatedWordModal';
 import SimulatedExcelModal from './components/SimulatedExcelModal';
-import { UploadCloud, CheckCircle, FolderPlus, Edit, AlertTriangle } from 'lucide-react';
+import { UploadCloud, CheckCircle, FolderPlus, Edit, AlertTriangle, Loader2 } from 'lucide-react';
+import { initAuth, googleSignIn, logout } from './firebase';
+import { 
+  getGoogleDriveItems, 
+  createFolderInGoogleDrive, 
+  uploadFileToGoogleDrive, 
+  deleteFileFromGoogleDrive, 
+  fetchGoogleDriveFileContent,
+  getGoogleDriveFolderMetadata
+} from './googleDriveApi';
 
 export default function App() {
   const [items, setItems] = useState<DBItem[]>([]);
@@ -50,6 +59,17 @@ export default function App() {
   // Hidden File input upload dialog
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Google Drive integration states
+  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
+  const [googleUserEmail, setGoogleUserEmail] = useState<string | null>(null);
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+  const [googleDriveItems, setGoogleDriveItems] = useState<DBItem[]>([]);
+  const [googleDriveParentFolderId, setGoogleDriveParentFolderId] = useState<string | null>(null);
+  const [googleDrivePath, setGoogleDrivePath] = useState<{ id: string | null; name: string }[]>([
+    { id: null, name: 'Google Drive (โฟลเดอร์เซฟหลัก)' }
+  ]);
+  const [googleDriveLoading, setGoogleDriveLoading] = useState(false);
+
   const fetchItemsAndStats = () => {
     getAllItems().then(loadedItems => {
       setItems(loadedItems);
@@ -63,13 +83,153 @@ export default function App() {
     });
   };
 
-  // Seed storage metrics on mount
+  // Seed storage metrics on mount and initialize google auth listener
   useEffect(() => {
     fetchItemsAndStats();
+    
+    // Listen for Google Auth state
+    initAuth(
+      (user, token) => {
+        setGoogleAccessToken(token);
+        setIsGoogleConnected(true);
+        setGoogleUserEmail(user.email);
+        setAlertMessage(`🔑 เชื่อมต่อบัญชี Google (${user.email}) สำเร็จด้วย OAuth! พร้อมใช้งานคลาวด์ไดฟ์กูเกิ้ลแล้ว`);
+      },
+      () => {
+        setGoogleAccessToken(null);
+        setIsGoogleConnected(false);
+        setGoogleUserEmail(null);
+      }
+    );
   }, []);
 
-  const handleNavigate = (folderId: string | null) => {
-    setCurrentFolderId(folderId);
+  const fetchGoogleDriveFiles = (token: string, folderId: string | null) => {
+    setGoogleDriveLoading(true);
+    getGoogleDriveItems(token, folderId)
+      .then(driveItems => {
+        setGoogleDriveItems(driveItems);
+        setGoogleDriveLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to load Google Drive items:', err);
+        setGoogleDriveLoading(false);
+        setAlertMessage('🚨 เกิดข้อผิดพลาดในการโหลดไฟล์จาก Google Drive กรุณาลองใหม่อีกครั้ง');
+      });
+  };
+
+  useEffect(() => {
+    if (currentCategory === 'google-drive' && googleAccessToken) {
+      fetchGoogleDriveFiles(googleAccessToken, googleDriveParentFolderId);
+    }
+  }, [currentCategory, googleDriveParentFolderId, googleAccessToken]);
+
+  const handleConnectGoogle = async () => {
+    try {
+      const res = await googleSignIn();
+      if (res) {
+        setGoogleAccessToken(res.accessToken);
+        setIsGoogleConnected(true);
+        setGoogleUserEmail(res.user.email);
+        setAlertMessage(`🔑 เชื่อมต่อบัญชี Google Drive ของคุณ (${res.user.email}) เรียบร้อย! สามารถซิงค์ ค้นหา และดูข้อมูลได้ตลอดเวลา`);
+      }
+    } catch (err: any) {
+      console.error('Failed to login with Google:', err);
+      setAlertMessage(`🚨 เชื่อมต่อ Google Drive ล้มเหลว: ${err.message || err}`);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    if (confirm('⚠️ การยกเลิกการเชื่อมต่อบัญชี Google จะทำให้ระบบไม่สามารถแสดงไดรฟ์กูเกิ้ลในหน้ารายการได้ในตอนนี้ คุณแน่ใจหรือไม่?')) {
+      await logout();
+      setGoogleAccessToken(null);
+      setIsGoogleConnected(false);
+      setGoogleUserEmail(null);
+      if (currentCategory === 'google-drive') {
+        setCurrentCategory('all');
+      }
+      setAlertMessage('🔓 ยกเลิกการเชื่อมต่อบัญชี Google ของคุณเสร็จสิ้นแล้ว');
+    }
+  };
+
+  const handleImportFromGoogle = async (item: DBItem) => {
+    if (!googleAccessToken) return;
+    setGoogleDriveLoading(true);
+    try {
+      const fetched = await fetchGoogleDriveFileContent(googleAccessToken, item.id, item.type);
+      const newItem: DBItem = {
+        id: 'file_imported_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
+        name: item.name,
+        isFolder: false,
+        parentId: currentFolderId,
+        size: item.size || fetched.content.length,
+        type: item.type || 'application/octet-stream',
+        content: fetched.content,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        isTrashed: false,
+        tag: 'นำเข้า'
+      };
+
+      setItems(prev => [...prev, newItem]);
+      await putItem(newItem);
+      fetchItemsAndStats();
+      setAlertMessage(`📥 นำเข้าไฟล์ "${item.name}" จาก Google Drive มาจัดเก็บถาวรยังระบบเครื่องสำเร็จแล้ว!`);
+    } catch (err: any) {
+      console.error('Import failed:', err);
+      setAlertMessage(`🚨 นำเข้าจาก Google Drive ล้มเหลว: ${err.message || err}`);
+    } finally {
+      setGoogleDriveLoading(false);
+    }
+  };
+
+  const handleExportToGoogle = async (item: DBItem) => {
+    if (!googleAccessToken) {
+      setAlertMessage('🚨 กรุณาเชื่อมต่อบัญชี Google Drive ก่อนทำการส่งออกไฟล์');
+      return;
+    }
+    if (item.isFolder) return;
+    setGoogleDriveLoading(true);
+    try {
+      await uploadFileToGoogleDrive(googleAccessToken, item.name, item.type, item.content || '', googleDriveParentFolderId);
+      setAlertMessage(`📤 ส่งออกไฟล์ "${item.name}" ไปยังคลาวด์ Google Drive สำเร็จเป็นที่เรียบร้อยแล้ว!`);
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      setAlertMessage(`🚨 ส่งออกไฟล์ไปยัง Google Drive ล้มเหลว: ${err.message || err}`);
+    } finally {
+      setGoogleDriveLoading(false);
+    }
+  };
+
+  const handleNavigate = async (folderId: string | null) => {
+    if (currentCategory === 'google-drive') {
+      if (folderId === null) {
+        setGoogleDriveParentFolderId(null);
+        setGoogleDrivePath([{ id: null, name: 'Google Drive (โฟลเดอร์เซฟหลัก)' }]);
+      } else {
+        const folder = googleDriveItems.find(x => x.id === folderId);
+        if (folder) {
+          const existIndex = googleDrivePath.findIndex(x => x.id === folderId);
+          if (existIndex !== -1) {
+            setGoogleDrivePath(prev => prev.slice(0, existIndex + 1));
+          } else {
+            setGoogleDrivePath(prev => [...prev, { id: folderId, name: folder.name }]);
+          }
+          setGoogleDriveParentFolderId(folderId);
+        } else {
+          if (googleAccessToken) {
+            try {
+              const meta = await getGoogleDriveFolderMetadata(googleAccessToken, folderId);
+              setGoogleDriveParentFolderId(folderId);
+              setGoogleDrivePath([{ id: null, name: 'Google Drive (โฟลเดอร์เซฟหลัก)' }, { id: meta.id, name: meta.name }]);
+            } catch (err) {
+              console.error(err);
+            }
+          }
+        }
+      }
+    } else {
+      setCurrentFolderId(folderId);
+    }
   };
 
   // Compute storage space and item counts dynamically
@@ -133,22 +293,37 @@ export default function App() {
 
     reader.onload = async (e) => {
       const content = e.target?.result as string;
-      const newItem: DBItem = {
-        id: 'file_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
-        name: file.name,
-        isFolder: false,
-        parentId: currentCategory === 'trash' ? null : currentFolderId,
-        size: file.size,
-        type: file.type || 'application/octet-stream',
-        content: content,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        isTrashed: false,
-      };
 
-      setItems(prev => [...prev, newItem]);
-      await putItem(newItem);
-      fetchItemsAndStats();
+      if (currentCategory === 'google-drive' && googleAccessToken) {
+        setGoogleDriveLoading(true);
+        try {
+          await uploadFileToGoogleDrive(googleAccessToken, file.name, file.type, content, googleDriveParentFolderId);
+          fetchGoogleDriveFiles(googleAccessToken, googleDriveParentFolderId);
+          setAlertMessage(`📤 อัปโหลดไฟล์ "${file.name}" คลาวด์ไปเก็บที่ Google Drive ปลอดภัย เรียบร้อยแล้ว!`);
+        } catch (err: any) {
+          console.error(err);
+          setAlertMessage(`🚨 อัปโหลดไป Google Drive ล้มเหลว: ${err.message || err}`);
+        } finally {
+          setGoogleDriveLoading(false);
+        }
+      } else {
+        const newItem: DBItem = {
+          id: 'file_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
+          name: file.name,
+          isFolder: false,
+          parentId: currentCategory === 'trash' ? null : currentFolderId,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          content: content,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          isTrashed: false,
+        };
+
+        setItems(prev => [...prev, newItem]);
+        await putItem(newItem);
+        fetchItemsAndStats();
+      }
     };
 
     if (isText) {
@@ -169,22 +344,37 @@ export default function App() {
       return;
     }
 
-    const newFolder: DBItem = {
-      id: 'folder_' + Math.random().toString(36).substring(2) + Date.now().toString(),
-      name: folderNameInput.trim(),
-      isFolder: true,
-      parentId: currentFolderId,
-      size: 0,
-      type: 'directory',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      isTrashed: false,
-    };
+    if (currentCategory === 'google-drive' && googleAccessToken) {
+      setGoogleDriveLoading(true);
+      try {
+        await createFolderInGoogleDrive(googleAccessToken, folderNameInput.trim(), googleDriveParentFolderId);
+        fetchGoogleDriveFiles(googleAccessToken, googleDriveParentFolderId);
+        setAlertMessage(`📁 สร้างโฟลเดอร์ใหม่ "${folderNameInput.trim()}" ใน Google Drive เรียบร้อยแล้ว!`);
+      } catch (err: any) {
+        console.error(err);
+        setAlertMessage(`🚨 สร้างโฟลเดอร์ใน Google Drive ล้มเหลว: ${err.message || err}`);
+      } finally {
+        setGoogleDriveLoading(false);
+        setIsCreateFolderOpen(false);
+      }
+    } else {
+      const newFolder: DBItem = {
+        id: 'folder_' + Math.random().toString(36).substring(2) + Date.now().toString(),
+        name: folderNameInput.trim(),
+        isFolder: true,
+        parentId: currentFolderId,
+        size: 0,
+        type: 'directory',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        isTrashed: false,
+      };
 
-    setItems(prev => [...prev, newFolder]);
-    setIsCreateFolderOpen(false);
-    await putItem(newFolder);
-    fetchItemsAndStats();
+      setItems(prev => [...prev, newFolder]);
+      setIsCreateFolderOpen(false);
+      await putItem(newFolder);
+      fetchItemsAndStats();
+    }
   };
 
   const handleDownload = (item: DBItem) => {
@@ -264,6 +454,23 @@ export default function App() {
   };
 
   const handleDelete = async (item: DBItem) => {
+    if (currentCategory === 'google-drive' && googleAccessToken) {
+      if (confirm(`🚨 ยืนยันการลบไฟล์จาก Google Drive\nคุณแน่ใจหรือไม่ว่าต้องการลบ "${item.name}" จาก Google Drive ถาวร? ข้อมูลทั้งหมดจะสูญหาย`)) {
+        setGoogleDriveLoading(true);
+        try {
+          await deleteFileFromGoogleDrive(googleAccessToken, item.id);
+          fetchGoogleDriveFiles(googleAccessToken, googleDriveParentFolderId);
+          setAlertMessage(`🗑️ ลบไฟล์ "${item.name}" จาก Google Drive สำเร็จเรียบร้อยแล้ว!`);
+        } catch (err: any) {
+          console.error(err);
+          setAlertMessage(`🚨 ลบไฟล์บน Google Drive ล้มเหลว: ${err.message || err}`);
+        } finally {
+          setGoogleDriveLoading(false);
+        }
+      }
+      return;
+    }
+
     if (item.isTrashed) {
       if (confirm(`🚨 เลือกการลบอย่างถาวรกู้ไม่ได้\nคุณต้องการลบ "${item.name}" อย่างถาวรใช่หรือไม่?`)) {
         setItems(prev => prev.filter(x => x.id !== item.id));
@@ -331,11 +538,47 @@ export default function App() {
     }
   };
 
-  const handleOpenFile = (item: DBItem) => {
+  const handleOpenFile = async (item: DBItem) => {
     if (item.isFolder) {
       handleNavigate(item.id);
       return;
     }
+
+    if (currentCategory === 'google-drive' && googleAccessToken) {
+      const isGoogleApps = item.type.startsWith('application/vnd.google-apps.');
+      if (isGoogleApps) {
+        if (item.content) {
+          window.open(item.content, '_blank');
+          setAlertMessage(`🔗 กำลังเปิดเอกสาร Google ดั้งเดิมในแท็บใหม่...`);
+          return;
+        }
+      }
+
+      setGoogleDriveLoading(true);
+      try {
+        const fetched = await fetchGoogleDriveFileContent(googleAccessToken, item.id, item.type);
+        const tempItem: DBItem = {
+          ...item,
+          content: fetched.content,
+        };
+        setGoogleDriveLoading(false);
+        openLocalViewer(tempItem);
+      } catch (err: any) {
+        console.error(err);
+        setGoogleDriveLoading(false);
+        if (item.content) {
+          window.open(item.content, '_blank');
+        } else {
+          setAlertMessage(`🚨 ไม่สามารถโหลดเนื้อหาไฟล์เพื่อแสดงตัวอย่างได้: ${err.message || err}`);
+        }
+      }
+      return;
+    }
+
+    openLocalViewer(item);
+  };
+
+  const openLocalViewer = (item: DBItem) => {
     const parts = item.name.split('.');
     const fileExt = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
     const mime = item.type.toLowerCase();
@@ -428,18 +671,41 @@ export default function App() {
             onCreateFolderClick={handleCreateFolder}
             isCollapsed={isSidebarCollapsed}
             onToggleCollapse={() => setIsSidebarCollapsed(true)}
+            isGoogleConnected={isGoogleConnected}
+            onConnectGoogle={handleConnectGoogle}
+            onDisconnectGoogle={handleDisconnectGoogle}
+            googleUserEmail={googleUserEmail}
           />
         </div>
       </div>
 
       {/* Main drive workspace */}
       <FileGrid
-        items={items}
-        currentFolderId={currentFolderId}
+        items={currentCategory === 'google-drive' ? googleDriveItems : items}
+        currentFolderId={currentCategory === 'google-drive' ? googleDriveParentFolderId : currentFolderId}
         currentCategory={currentCategory}
         onNavigate={handleNavigate}
         onPreview={handleOpenFile}
-        onDownload={handleDownload}
+        onDownload={currentCategory === 'google-drive' ? (item) => {
+          if (googleAccessToken) {
+            setGoogleDriveLoading(true);
+            fetchGoogleDriveFileContent(googleAccessToken, item.id, item.type)
+              .then(res => {
+                const link = document.createElement('a');
+                link.href = res.content;
+                link.download = item.name;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setGoogleDriveLoading(false);
+              })
+              .catch(err => {
+                console.error(err);
+                setGoogleDriveLoading(false);
+                setAlertMessage(`🚨 ดาวน์โหลดจากกูเกิ้ลไดฟ์ล้มเหลว: ${err.message || err}`);
+              });
+          }
+        } : handleDownload}
         onRename={handleRename}
         onMove={handleMoveFileOrFolder}
         onDelete={handleDelete}
@@ -448,7 +714,21 @@ export default function App() {
         isSidebarCollapsed={isSidebarCollapsed}
         onToggleSidebar={() => setIsSidebarCollapsed(false)}
         onOpenChoice={(item) => setOpenChoiceItem(item)}
+        breadcrumbsOverride={currentCategory === 'google-drive' ? googleDrivePath : undefined}
+        onExportToGoogle={handleExportToGoogle}
+        onImportFromGoogle={handleImportFromGoogle}
+        isGoogleConnected={isGoogleConnected}
       />
+
+      {/* Loading Overlay spinner */}
+      {googleDriveLoading && (
+        <div className="fixed inset-0 bg-slate-900/45 backdrop-blur-xs flex flex-col items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center gap-3 border border-slate-100 select-none">
+            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+            <p className="text-xs font-semibold text-slate-700">กำลังประมวลผลข้อมูล Google Drive สื่อสารระบบ...</p>
+          </div>
+        </div>
+      )}
 
       {/* Standard multimedia preview modal */}
       {previewItem && (
