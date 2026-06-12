@@ -69,6 +69,7 @@ export default function App() {
     { id: null, name: 'Google Drive (โฟลเดอร์เซฟหลัก)' }
   ]);
   const [googleDriveLoading, setGoogleDriveLoading] = useState(false);
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
 
   const fetchItemsAndStats = () => {
     getAllItems().then(loadedItems => {
@@ -124,6 +125,8 @@ export default function App() {
   }, [currentCategory, googleDriveParentFolderId, googleAccessToken]);
 
   const handleConnectGoogle = async () => {
+    if (isConnectingGoogle) return;
+    setIsConnectingGoogle(true);
     try {
       const res = await googleSignIn();
       if (res) {
@@ -134,7 +137,14 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to login with Google:', err);
-      setAlertMessage(`🚨 เชื่อมต่อ Google Drive ล้มเหลว: ${err.message || err}`);
+      const isCancelled = err.message?.includes('cancelled-popup-request') || err.code === 'auth/cancelled-popup-request';
+      if (isCancelled) {
+        setAlertMessage(`⚠️ การเชื่อมต่อถูกยกเลิก (เนื่องจากหน้าต่างล็อกอินถูกปิดไปก่อนหน้า หรือมีหน้าต่างเข้าสู่ระบบทำงานซ้อนกันอยู่) กรุณาลองใหม่อีกครั้ง`);
+      } else {
+        setAlertMessage(`🚨 เชื่อมต่อ Google Drive ล้มเหลว: ${err.message || err}`);
+      }
+    } finally {
+      setIsConnectingGoogle(false);
     }
   };
 
@@ -676,6 +686,7 @@ export default function App() {
             onConnectGoogle={handleConnectGoogle}
             onDisconnectGoogle={handleDisconnectGoogle}
             googleUserEmail={googleUserEmail}
+            isConnectingGoogle={isConnectingGoogle}
           />
         </div>
       </div>
