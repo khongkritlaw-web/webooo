@@ -1,0 +1,6 @@
+{
+  "name": "Cloud File Manager",
+  "description": "ระบบจัดเก็บและจัดการไฟล์ออนไลน์ระดับมืออาชีพ (Cloud File Storage & Manager) จัดการโฟลเดอร์, ค้นหาไฟล์อย่างรวดเร็ว, แก้ไขเอกสารในตัว, และพรีวิวสื่อมัลติมีเดียต่างๆ",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
