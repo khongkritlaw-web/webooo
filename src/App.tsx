@@ -331,6 +331,24 @@ export default function App() {
     }
   };
 
+  const handleOpenFile = (item: DBItem) => {
+    if (item.isFolder) {
+      handleNavigate(item.id);
+      return;
+    }
+    const parts = item.name.split('.');
+    const fileExt = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+    const mime = item.type.toLowerCase();
+
+    if (['doc', 'docx'].includes(fileExt) || mime.includes('document') || mime.includes('msword')) {
+      setSimulatedWordItem(item);
+    } else if (['xls', 'xlsx', 'csv'].includes(fileExt) || mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) {
+      setSimulatedExcelItem(item);
+    } else {
+      setPreviewItem(item);
+    }
+  };
+
   // Drag over triggers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -420,7 +438,7 @@ export default function App() {
         currentFolderId={currentFolderId}
         currentCategory={currentCategory}
         onNavigate={handleNavigate}
-        onPreview={(item) => setOpenChoiceItem(item)}
+        onPreview={handleOpenFile}
         onDownload={handleDownload}
         onRename={handleRename}
         onMove={handleMoveFileOrFolder}
@@ -429,6 +447,7 @@ export default function App() {
         onClearTrash={handleClearTrash}
         isSidebarCollapsed={isSidebarCollapsed}
         onToggleSidebar={() => setIsSidebarCollapsed(false)}
+        onOpenChoice={(item) => setOpenChoiceItem(item)}
       />
 
       {/* Standard multimedia preview modal */}
@@ -438,6 +457,7 @@ export default function App() {
           onClose={() => setPreviewItem(null)}
           onSaveContent={handleSaveTextContent}
           onDownload={handleDownload}
+          onOpenHandoff={(item) => setOpenChoiceItem(item)}
         />
       )}
 
@@ -472,6 +492,7 @@ export default function App() {
           item={simulatedWordItem}
           onClose={() => setSimulatedWordItem(null)}
           onSaveContent={handleSaveTextContent}
+          onOpenHandoff={(item) => setOpenChoiceItem(item)}
         />
       )}
 
@@ -481,6 +502,7 @@ export default function App() {
           item={simulatedExcelItem}
           onClose={() => setSimulatedExcelItem(null)}
           onSaveContent={handleSaveTextContent}
+          onOpenHandoff={(item) => setOpenChoiceItem(item)}
         />
       )}
 

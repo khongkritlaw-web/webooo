@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Download, FileText, Check, AlertCircle } from 'lucide-react';
+import { X, Save, Download, FileText, Check, AlertCircle, Laptop } from 'lucide-react';
 import { DBItem } from '../types';
 
 interface PreviewModalProps {
@@ -12,6 +12,7 @@ interface PreviewModalProps {
   onClose: () => void;
   onSaveContent: (id: string, updatedContent: string) => Promise<void>;
   onDownload: (item: DBItem) => void;
+  onOpenHandoff?: (item: DBItem) => void;
 }
 
 export default function PreviewModal({
@@ -19,6 +20,7 @@ export default function PreviewModal({
   onClose,
   onSaveContent,
   onDownload,
+  onOpenHandoff,
 }: PreviewModalProps) {
   const [editText, setEditText] = useState('');
   const [isEditable, setIsEditable] = useState(false);
@@ -99,15 +101,31 @@ export default function PreviewModal({
 
           <div className="flex items-center gap-2">
             {!item.isFolder && (
-              <button
-                id="btn-preview-download"
-                onClick={() => onDownload(item)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
-                title="ดาวน์โหลดไฟล์เครื่อง"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">ดาวน์โหลด</span>
-              </button>
+              <>
+                <button
+                  id="btn-preview-download"
+                  onClick={() => onDownload(item)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+                  title="ดาวน์โหลดไฟล์เครื่อง"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">ดาวน์โหลด</span>
+                </button>
+                {onOpenHandoff && (
+                  <button
+                    id="btn-preview-handoff-alt"
+                    onClick={() => {
+                      onClose();
+                      onOpenHandoff(item);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+                    title="เปิดคู่มือวิธีเปิดทำงานบนเครื่องคอมพิวเตอร์ของคุณ"
+                  >
+                    <Laptop className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">เปิดด้วยแอปในเครื่อง</span>
+                  </button>
+                )}
+              </>
             )}
             <button
               id="btn-preview-close"

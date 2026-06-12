@@ -4,19 +4,21 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Grid, Check, Loader2, Play } from 'lucide-react';
+import { X, Save, Grid, Check, Loader2, Play, Laptop } from 'lucide-react';
 import { DBItem } from '../types';
 
 interface SimulatedExcelModalProps {
   item: DBItem;
   onClose: () => void;
   onSaveContent: (id: string, content: string) => Promise<void>;
+  onOpenHandoff?: (item: DBItem) => void;
 }
 
 export default function SimulatedExcelModal({
   item,
   onClose,
   onSaveContent,
+  onOpenHandoff,
 }: SimulatedExcelModalProps) {
   const [gridData, setGridData] = useState<string[][]>([]);
   const [selectedCell, setSelectedCell] = useState<{ r: number; c: number } | null>({ r: 0, c: 0 });
@@ -177,11 +179,26 @@ export default function SimulatedExcelModal({
             id="excel-save-btn"
             onClick={handleSaveWorkspace}
             disabled={isSaving}
-            className="flex items-center gap-2 px-4 py-1.5 bg-[#0b5c30] hover:bg-[#084423] text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-all disabled:opacity-60"
+            className="flex items-center gap-2 px-4 py-1.5 bg-[#0b5c30] hover:bg-[#084423] text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-all disabled:opacity-60 font-sans"
           >
             {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             <span>{isSaving ? 'กำลังเก็บข้อมูล...' : 'บันทึกงานสเปรดชีต'}</span>
           </button>
+
+          {onOpenHandoff && (
+            <button
+              id="excel-handoff-btn"
+              onClick={() => {
+                onClose();
+                onOpenHandoff(item);
+              }}
+              className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-all font-sans"
+              title="เปิดดูคู่มือวิธีเข้าเปิดทำงานบนโปรแกรม Microsoft Excel บนคอมพิวเตอร์ของคุณ"
+            >
+              <Laptop className="w-3.5 h-3.5" />
+              <span>เปิดด้วยแอปในเครื่อง</span>
+            </button>
+          )}
 
           <button
             id="excel-close-btn"

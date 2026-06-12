@@ -20,7 +20,8 @@ import {
   ArrowUp,
   ArrowDown,
   Eye,
-  Plus
+  Plus,
+  Laptop
 } from 'lucide-react';
 import { DBItem, FileCategory } from '../types';
 
@@ -38,6 +39,7 @@ interface FileGridProps {
   onClearTrash: () => void;
   isSidebarCollapsed: boolean;
   onToggleSidebar: () => void;
+  onOpenChoice?: (item: DBItem) => void;
 }
 
 type ViewMode = 'grid' | 'list';
@@ -58,6 +60,7 @@ export default function FileGrid({
   onClearTrash,
   isSidebarCollapsed,
   onToggleSidebar,
+  onOpenChoice,
 }: FileGridProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -394,6 +397,13 @@ export default function FileGrid({
                   onDragOver={(e) => item.isFolder ? handleDragOverFolder(e, item.id) : undefined}
                   onDragLeave={item.isFolder ? handleDragLeaveFolder : undefined}
                   onDrop={(e) => item.isFolder ? handleDropOnFolder(e, item.id) : undefined}
+                  onClick={() => {
+                    if (item.isFolder) {
+                      onNavigate(item.id);
+                    } else {
+                      onPreview(item);
+                    }
+                  }}
                   onDoubleClick={() => {
                     if (item.isFolder) {
                       onNavigate(item.id);
@@ -459,6 +469,18 @@ export default function FileGrid({
                                 <Eye className="w-3.5 h-3.5 text-indigo-500" />
                                 <span>{item.isFolder ? 'เปิดดูโฟลเดอร์' : 'เปิดดูไฟล์'}</span>
                               </button>
+                              {!item.isFolder && onOpenChoice && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenChoice(item);
+                                  }}
+                                  className="w-full text-left px-3.5 py-1.5 hover:bg-indigo-50 text-indigo-700 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer border-b border-indigo-100/50"
+                                >
+                                  <Laptop className="w-3.5 h-3.5 text-indigo-500" />
+                                  <span>เปิดด้วยแอปในเครื่อง</span>
+                                </button>
+                              )}
                               {!item.isFolder && (
                                 <button
                                   onClick={() => onDownload(item)}
@@ -532,6 +554,13 @@ export default function FileGrid({
                       onDragOver={(e) => item.isFolder ? handleDragOverFolder(e, item.id) : undefined}
                       onDragLeave={item.isFolder ? handleDragLeaveFolder : undefined}
                       onDrop={(e) => item.isFolder ? handleDropOnFolder(e, item.id) : undefined}
+                      onClick={() => {
+                        if (item.isFolder) {
+                          onNavigate(item.id);
+                        } else {
+                          onPreview(item);
+                        }
+                      }}
                       onDoubleClick={() => {
                         if (item.isFolder) {
                           onNavigate(item.id);
@@ -602,6 +631,18 @@ export default function FileGrid({
                                   <Eye className="w-3.5 h-3.5 text-indigo-500" />
                                   <span>{item.isFolder ? 'เปิดเข้าดู' : 'เปิดดูพรีวิว'}</span>
                                 </button>
+                                {!item.isFolder && onOpenChoice && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onOpenChoice(item);
+                                    }}
+                                    className="w-full text-left px-3.5 py-1.5 hover:bg-indigo-50 text-indigo-700 font-bold flex items-center gap-1.5 cursor-pointer border-b border-indigo-100/50"
+                                  >
+                                    <Laptop className="w-3.5 h-3.5 text-indigo-500" />
+                                    <span>เปิดด้วยแอปในเครื่อง</span>
+                                  </button>
+                                )}
                                 {!item.isFolder && (
                                   <button
                                     onClick={() => onDownload(item)}

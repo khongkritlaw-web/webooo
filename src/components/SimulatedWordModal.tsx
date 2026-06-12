@@ -4,19 +4,21 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, FileText, AlignLeft, AlignCenter, AlignRight, Bold, Italic, Underline, Check, RefreshCw } from 'lucide-react';
+import { X, Save, FileText, AlignLeft, AlignCenter, AlignRight, Bold, Italic, Underline, Check, RefreshCw, Laptop } from 'lucide-react';
 import { DBItem } from '../types';
 
 interface SimulatedWordModalProps {
   item: DBItem;
   onClose: () => void;
   onSaveContent: (id: string, content: string) => Promise<void>;
+  onOpenHandoff?: (item: DBItem) => void;
 }
 
 export default function SimulatedWordModal({
   item,
   onClose,
   onSaveContent,
+  onOpenHandoff,
 }: SimulatedWordModalProps) {
   const [docText, setDocText] = useState('');
   const [currFont, setCurrFont] = useState('Inter');
@@ -85,11 +87,26 @@ export default function SimulatedWordModal({
             id="word-save-btn"
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-1.5 bg-[#124a9c] hover:bg-[#0c397c] text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-all disabled:opacity-60"
+            className="flex items-center gap-2 px-4 py-1.5 bg-[#124a9c] hover:bg-[#0c397c] text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-all disabled:opacity-60 font-sans"
           >
             {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             <span>{saving ? 'กำลังอัปโหลด...' : 'บันทึกงาน'}</span>
           </button>
+
+          {onOpenHandoff && (
+            <button
+              id="word-handoff-btn"
+              onClick={() => {
+                onClose();
+                onOpenHandoff(item);
+              }}
+              className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-all font-sans"
+              title="เปิดดูคู่มือวิธีเข้าเปิดทำงานบนโปรแกรม Microsoft Word บนคอมพิวเตอร์ของคุณ"
+            >
+              <Laptop className="w-3.5 h-3.5" />
+              <span>เปิดด้วยแอปในเครื่อง</span>
+            </button>
+          )}
           
           <button
             id="word-close-btn"
