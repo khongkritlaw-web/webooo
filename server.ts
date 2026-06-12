@@ -248,6 +248,49 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "15mb", extended: true }));
 
   // API Endpoints
+  // Download or stream file content directly
+  app.get("/api/download/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      const items = readItems();
+      const item = items.find(x => x.id === id);
+      if (!item) {
+        res.status(404).send("ไม่พบไฟล์ที่ระบุ");
+        return;
+      }
+
+      if (item.isFolder) {
+        res.status(400).send("โฟลเดอร์ไม่สามารถดาวน์โหลดเป็นไฟล์ตรงๆ ได้");
+        return;
+      }
+
+      const contentType = item.type || "application/octet-stream";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(item.name)}`);
+
+      if (item.content) {
+        if (item.content.startsWith("data:")) {
+          // Data URL base64 handling
+          const parts = item.content.split(",");
+          if (parts.length > 1) {
+            const base64Data = parts[1];
+            const buffer = Buffer.from(base64Data, "base64");
+            res.send(buffer);
+          } else {
+            res.send(Buffer.from(item.content));
+          }
+        } else {
+          // Plain raw text or markdown
+          res.send(item.content);
+        }
+      } else {
+        res.send(Buffer.alloc(0));
+      }
+    } catch (e: any) {
+      res.status(500).send(e.message);
+    }
+  });
+
   // Get all items in the repository
   app.get("/api/items", (req, res) => {
     try {
