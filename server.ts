@@ -8,6 +8,17 @@ import path from "path";
 import fs from "fs";
 import { execSync } from "child_process";
 import { createServer as createViteServer } from "vite";
+import { initializeApp } from "firebase/app";
+import { 
+  getFirestore, 
+  collection, 
+  getDocs, 
+  getDoc, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc 
+} from "firebase/firestore";
 
 interface ServerDBItem {
   id: string;
@@ -37,13 +48,32 @@ const STORAGE_DIR = path.join(process.cwd(), "storage");
 const DB_METADATA_PATH = path.join(STORAGE_DIR, "db-metadata.json");
 const ACTIVITY_LOGS_PATH = path.join(STORAGE_DIR, "activity-logs.json");
 
-// Ensure storage folders exist
+// Ensure storage folders exist (for local file fallbacks)
 if (!fs.existsSync(STORAGE_DIR)) {
   fs.mkdirSync(STORAGE_DIR, { recursive: true });
 }
 
-// Seed helper (only if DB doesn't exist)
-function seedDatabase() {
+// Initialize Firestore
+let db: any = null;
+let useFirestore = false;
+
+try {
+  const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(firebaseConfigPath)) {
+    const config = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf8"));
+    const fApp = initializeApp(config);
+    db = getFirestore(fApp, config.firestoreDatabaseId);
+    useFirestore = true;
+    console.log("[Firebase Backend] Connected to cloud Firestore database!");
+  } else {
+    console.warn("[Firebase Backend] firebase-applet-config.json not found, falling back to local files.");
+  }
+} catch (e) {
+  console.error("[Firebase Backend] Failed to configure Firebase:", e);
+}
+
+// Function to generate the default initial documents
+function getInitialSeedItems(): ServerDBItem[] {
   const now = Date.now();
   const folderDocId = 'f1_docs';
   const folderImagesId = 'f2_images';
@@ -71,10 +101,9 @@ function seedDatabase() {
 - [ ] ติดสติกเกอร์หน้ากล่องเก็บไฟล์สำหรับแยกประเภทงาน
 `;
 
-  // Tiny base64 card image
-  const sampleSVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%234f46e5"/><stop offset="100%" stop-color="%2306b6d4"/></linearGradient></defs><rect width="100%" height="100%" fill="url(%23g)"/><text x="50%" y="45%" font-family="Helvetica, Arial, sans-serif" font-size="36" fill="white" font-weight="bold" text-anchor="middle">Thai Cloud Drive</text><text x="50%" y="58%" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="rgba(255,255,255,0.8)" text-anchor="middle">ระบบออนไลน์ของจริง เชื่อมต่อหลายอุปกรณ์ได้พร้อมกัน</text></svg>`;
+  const sampleSVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2050/svg" width="800" height="450" viewBox="0 0 800 450"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%234f46e5"/><stop offset="100%" stop-color="%2306b6d4"/></linearGradient></defs><rect width="100%" height="100%" fill="url(%23g)"/><text x="50%" y="45%" font-family="Helvetica, Arial, sans-serif" font-size="36" fill="white" font-weight="bold" text-anchor="middle">Thai Cloud Drive</text><text x="50%" y="58%" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="rgba(255,255,255,0.8)" text-anchor="middle">ระบบออนไลน์ของจริง เชื่อมต่อหลายอุปกรณ์ได้พร้อมกัน</text></svg>`;
 
-  const initialItems: ServerDBItem[] = [
+  return [
     {
       id: folderDocId,
       name: 'เอกสารส่วนตัว',
@@ -164,8 +193,16 @@ function seedDatabase() {
       isTrashed: false,
     }
   ];
+}
 
-  fs.writeFileSync(DB_METADATA_PATH, JSON.stringify(initialItems, null, 2), "utf8");
+// Seed helper (only if local DB doesn't exist)
+function seedDatabase() {
+  const initialItems = getInitialSeedItems();
+  try {
+    fs.writeFileSync(DB_METADATA_PATH, JSON.stringify(initialItems, null, 2), "utf8");
+  } catch (err) {
+    console.error("Failed to seed local DB file:", err);
+  }
 }
 
 if (!fs.existsSync(DB_METADATA_PATH)) {
@@ -173,11 +210,38 @@ if (!fs.existsSync(DB_METADATA_PATH)) {
 }
 
 if (!fs.existsSync(ACTIVITY_LOGS_PATH)) {
-  fs.writeFileSync(ACTIVITY_LOGS_PATH, JSON.stringify([], null, 2), "utf8");
+  try {
+    fs.writeFileSync(ACTIVITY_LOGS_PATH, JSON.stringify([], null, 2), "utf8");
+  } catch (err) {
+    console.error("Failed to seed activity logs file:", err);
+  }
 }
 
-// Low level db read/write helpers
-function readItems(): ServerDBItem[] {
+// Asynchronous DB read/write helpers
+async function readItems(): Promise<ServerDBItem[]> {
+  if (useFirestore && db) {
+    try {
+      const colRef = collection(db, "items");
+      const qSnapshot = await getDocs(colRef);
+      const items: ServerDBItem[] = [];
+      qSnapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as ServerDBItem);
+      });
+      
+      if (items.length === 0) {
+        console.log("[Firebase Backend] Cloud database is empty. Seeding initial items to Firestore...");
+        const initial = getInitialSeedItems();
+        for (const item of initial) {
+          await setDoc(doc(db, "items", item.id), item);
+        }
+        return initial;
+      }
+      return items;
+    } catch (err) {
+      console.error("[Firebase Backend] Firestore readItems error, falling back to local files:", err);
+    }
+  }
+
   try {
     return JSON.parse(fs.readFileSync(DB_METADATA_PATH, "utf8"));
   } catch (e) {
@@ -185,11 +249,32 @@ function readItems(): ServerDBItem[] {
   }
 }
 
-function writeItems(items: ServerDBItem[]) {
-  fs.writeFileSync(DB_METADATA_PATH, JSON.stringify(items, null, 2), "utf8");
+async function writeItems(items: ServerDBItem[]) {
+  // Keeping local metadata file in sync as a secondary fallback
+  try {
+    fs.writeFileSync(DB_METADATA_PATH, JSON.stringify(items, null, 2), "utf8");
+  } catch (err) {
+    console.error("Local file write error:", err);
+  }
 }
 
-function readLogs(): ServerActivityLog[] {
+async function readLogs(): Promise<ServerActivityLog[]> {
+  if (useFirestore && db) {
+    try {
+      const colRef = collection(db, "activity_logs");
+      const qSnapshot = await getDocs(colRef);
+      const logs: ServerActivityLog[] = [];
+      qSnapshot.forEach((docSnap) => {
+        logs.push(docSnap.data() as ServerActivityLog);
+      });
+      // Sort desc by timestamp
+      logs.sort((a, b) => b.timestamp - a.timestamp);
+      return logs;
+    } catch (err) {
+      console.error("[Firebase Backend] Firestore readLogs error, falling back to local:", err);
+    }
+  }
+
   try {
     return JSON.parse(fs.readFileSync(ACTIVITY_LOGS_PATH, "utf8"));
   } catch (e) {
@@ -197,12 +282,16 @@ function readLogs(): ServerActivityLog[] {
   }
 }
 
-function writeLogs(logs: ServerActivityLog[]) {
-  fs.writeFileSync(ACTIVITY_LOGS_PATH, JSON.stringify(logs, null, 2), "utf8");
+async function writeLogs(logs: ServerActivityLog[]) {
+  try {
+    fs.writeFileSync(ACTIVITY_LOGS_PATH, JSON.stringify(logs, null, 2), "utf8");
+  } catch (err) {
+    console.error("Local log file write error:", err);
+  }
 }
 
 // Disk space computation function (real disk space from shell execution with high-quality fallback)
-function getDFDiskSpace(): { freeSpace: number; usedSpace: number; totalSpace: number } {
+async function getDFDiskSpace(): Promise<{ freeSpace: number; usedSpace: number; totalSpace: number }> {
   let freeSpace = 100 * 1024 * 1024 * 1024; // 100 GB default fallback
   let usedSpace = 4.2 * 1024 * 1024 * 1024; // 4.2 GB default fallback
   let totalSpace = 104.2 * 1024 * 1024 * 1024;
@@ -229,7 +318,7 @@ function getDFDiskSpace(): { freeSpace: number; usedSpace: number; totalSpace: n
   }
 
   // Also calculate files upload actual space from db metadata
-  const items = readItems();
+  const items = await readItems();
   const dbActualSize = items.reduce((sum, item) => sum + (item.isFolder ? 0 : item.size), 0);
 
   // Return realistic cloud quota based on physical drive capacity
@@ -249,10 +338,10 @@ async function startServer() {
 
   // API Endpoints
   // Download or stream file content directly
-  app.get("/api/download/:id", (req, res) => {
+  app.get("/api/download/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const items = readItems();
+      const items = await readItems();
       const item = items.find(x => x.id === id);
       if (!item) {
         res.status(404).send("ไม่พบไฟล์ที่ระบุ");
@@ -292,9 +381,9 @@ async function startServer() {
   });
 
   // Get all items in the repository
-  app.get("/api/items", (req, res) => {
+  app.get("/api/items", async (req, res) => {
     try {
-      const items = readItems();
+      const items = await readItems();
       res.json(items);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -302,7 +391,7 @@ async function startServer() {
   });
 
   // Save/Upload standard item
-  app.post("/api/items", (req, res) => {
+  app.post("/api/items", async (req, res) => {
     try {
       const newItem = req.body as ServerDBItem;
       if (!newItem || !newItem.id) {
@@ -310,11 +399,19 @@ async function startServer() {
         return;
       }
 
-      const items = readItems();
+      const items = await readItems();
       // Remove possible duplicate ids
       const filtered = items.filter(x => x.id !== newItem.id);
       filtered.push(newItem);
-      writeItems(filtered);
+
+      if (useFirestore && db) {
+        try {
+          await setDoc(doc(db, "items", newItem.id), newItem);
+        } catch (dbErr) {
+          console.error("Firestore setDoc item error:", dbErr);
+        }
+      }
+      await writeItems(filtered);
 
       res.status(201).json({ success: true, item: newItem });
     } catch (e: any) {
@@ -323,20 +420,29 @@ async function startServer() {
   });
 
   // Update specific item directly
-  app.put("/api/items/:id", (req, res) => {
+  app.put("/api/items/:id", async (req, res) => {
     try {
       const { id } = req.params;
       const updatedItemFields = req.body as Partial<ServerDBItem>;
       
-      const items = readItems();
+      const items = await readItems();
       const idx = items.findIndex(x => x.id === id);
       if (idx === -1) {
         res.status(404).json({ error: "ไม่พบไอเท็มที่แก้ไข" });
         return;
       }
 
-      items[idx] = { ...items[idx], ...updatedItemFields };
-      writeItems(items);
+      const updated = { ...items[idx], ...updatedItemFields };
+      items[idx] = updated;
+
+      if (useFirestore && db) {
+        try {
+          await setDoc(doc(db, "items", id), updated);
+        } catch (dbErr) {
+          console.error("Firestore update doc item error:", dbErr);
+        }
+      }
+      await writeItems(items);
 
       res.json({ success: true, item: items[idx] });
     } catch (e: any) {
@@ -345,13 +451,21 @@ async function startServer() {
   });
 
   // Delete item or delete folder
-  app.delete("/api/items/:id", (req, res) => {
+  app.delete("/api/items/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const items = readItems();
+      const items = await readItems();
       
       const filtered = items.filter(x => x.id !== id);
-      writeItems(filtered);
+
+      if (useFirestore && db) {
+        try {
+          await deleteDoc(doc(db, "items", id));
+        } catch (dbErr) {
+          console.error("Firestore deleteDoc item error:", dbErr);
+        }
+      }
+      await writeItems(filtered);
 
       res.json({ success: true });
     } catch (e: any) {
@@ -360,9 +474,9 @@ async function startServer() {
   });
 
   // Live real storage spaces tracker
-  app.get("/api/system-storage", (req, res) => {
+  app.get("/api/system-storage", async (req, res) => {
     try {
-      const stats = getDFDiskSpace();
+      const stats = await getDFDiskSpace();
       res.json(stats);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -370,16 +484,16 @@ async function startServer() {
   });
 
   // Logs Activity Log Tracker endpoints
-  app.get("/api/activity", (req, res) => {
+  app.get("/api/activity", async (req, res) => {
     try {
-      const logs = readLogs();
+      const logs = await readLogs();
       res.json(logs);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
-  app.post("/api/activity", (req, res) => {
+  app.post("/api/activity", async (req, res) => {
     try {
       const newLog = req.body as ServerActivityLog;
       if (!newLog || !newLog.id) {
@@ -387,9 +501,19 @@ async function startServer() {
         return;
       }
 
-      const logs = readLogs();
+      const logs = await readLogs();
       logs.unshift(newLog); // push on top
-      writeLogs(logs.slice(0, 100)); // cap at 100 items
+
+      const trimmed = logs.slice(0, 100);
+
+      if (useFirestore && db) {
+        try {
+          await setDoc(doc(db, "activity_logs", newLog.id), newLog);
+        } catch (dbErr) {
+          console.error("Firestore setDoc log error:", dbErr);
+        }
+      }
+      await writeLogs(trimmed);
 
       res.status(201).json({ success: true });
     } catch (e: any) {
@@ -397,9 +521,20 @@ async function startServer() {
     }
   });
 
-  app.post("/api/activity/clear", (req, res) => {
+  app.post("/api/activity/clear", async (req, res) => {
     try {
-      writeLogs([]);
+      if (useFirestore && db) {
+        try {
+          const colRef = collection(db, "activity_logs");
+          const qSnap = await getDocs(colRef);
+          for (const docSnap of qSnap.docs) {
+            await deleteDoc(docSnap.ref);
+          }
+        } catch (dbErr) {
+          console.error("Firestore clear logs error:", dbErr);
+        }
+      }
+      await writeLogs([]);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

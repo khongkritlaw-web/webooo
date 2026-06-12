@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "Item": {
+      "title": "Item",
+      "description": "A structural file or folder in the user's cloud drive repository",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isFolder": { "type": "boolean" },
+        "parentId": { "type": "string" },
+        "size": { "type": "integer" },
+        "type": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" },
+        "tag": { "type": "string" },
+        "isTrashed": { "type": "boolean" },
+        "trashDate": { "type": "integer" }
+      },
+      "required": ["id", "name", "isFolder", "size", "type", "createdAt", "updatedAt", "isTrashed"]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "An interactive audit log tracking activities like file uploads, deletions, or edits",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "itemName": { "type": "string" },
+        "itemType": { "type": "string" },
+        "timestamp": { "type": "integer" }
+      },
+      "required": ["id", "action", "itemName", "itemType", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/items/{itemId}": {
+      "schema": "Item",
+      "description": "Collection of all folders and files inside the system drive"
+    },
+    "/activity_logs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "List of user activity log items"
+    }
+  }
+}
